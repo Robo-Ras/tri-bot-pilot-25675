@@ -9,7 +9,7 @@ app = Flask(__name__)
 class RobotController:
     def __init__(self):
         self.serial_connection = None
-        self.speed = 200
+        self.speed = 80  # Velocidade padrão mais baixa (0-100)
         self.is_connected = False
         
     def get_available_ports(self):
@@ -39,16 +39,21 @@ class RobotController:
         return False, "Não conectado"
     
     def move_forward(self):
-        return self.send_command(0, self.speed, -self.speed)
+        # Converte velocidade de 0-100 para 0-255
+        arduino_speed = int(self.speed * 2.55)
+        return self.send_command(0, arduino_speed, -arduino_speed)
     
     def move_backward(self):
-        return self.send_command(0, -self.speed, self.speed)
+        arduino_speed = int(self.speed * 2.55)
+        return self.send_command(0, -arduino_speed, arduino_speed)
     
     def move_right(self):
-        return self.send_command(-self.speed, 0, self.speed)
+        arduino_speed = int(self.speed * 2.55)
+        return self.send_command(-arduino_speed, 0, arduino_speed)
     
     def move_left(self):
-        return self.send_command(self.speed, -self.speed, 0)
+        arduino_speed = int(self.speed * 2.55)
+        return self.send_command(arduino_speed, -arduino_speed, 0)
     
     def stop(self):
         return self.send_command(0, 0, 0)
@@ -237,8 +242,8 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="speed-control">
-            <h3>Velocidade: <span id="speedValue">200</span></h3>
-            <input type="range" id="speedSlider" class="speed-slider" min="0" max="255" value="200" onchange="updateSpeed()">
+            <h3>Velocidade: <span id="speedValue">80</span>%</h3>
+            <input type="range" id="speedSlider" class="speed-slider" min="0" max="100" value="80" onchange="updateSpeed()">
         </div>
 
         <div id="message"></div>
@@ -262,7 +267,7 @@ HTML_TEMPLATE = """
 
     <script>
         let isConnected = false;
-        let speed = 200;
+        let speed = 80;
 
         // Carrega portas disponíveis ao iniciar
         window.onload = function() {
