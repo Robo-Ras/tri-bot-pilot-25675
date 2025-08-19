@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,7 @@ const Index = () => {
   const [port, setPort] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string>('');
+  const [speed, setSpeed] = useState<number>(80); // Velocidade de 0-100%
 
   // Verifica se o navegador suporta WebSerial
   const isWebSerialSupported = 'serial' in navigator;
@@ -45,10 +47,12 @@ const Index = () => {
     }
   };
 
-  const moveForward = () => sendCommand(0, 200, -200);
-  const moveBackward = () => sendCommand(0, -200, 200);
-  const moveRight = () => sendCommand(-200, 0, 200);
-  const moveLeft = () => sendCommand(200, -200, 0);
+  const getSpeedValue = () => Math.floor(speed * 2.55); // Converte de 0-100% para 0-255
+
+  const moveForward = () => sendCommand(0, getSpeedValue(), -getSpeedValue());
+  const moveBackward = () => sendCommand(0, -getSpeedValue(), getSpeedValue());
+  const moveRight = () => sendCommand(-getSpeedValue(), 0, getSpeedValue());
+  const moveLeft = () => sendCommand(getSpeedValue(), -getSpeedValue(), 0);
   const stop = () => sendCommand(0, 0, 0);
 
   useEffect(() => {
@@ -120,29 +124,45 @@ const Index = () => {
           </div>
 
           {isConnected && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-3 flex justify-center">
-                <Button onClick={moveForward} size="lg" className="w-20">
-                  ↑
-                </Button>
+            <>
+              <div className="space-y-3">
+                <div className="text-center">
+                  <p className="text-sm font-medium">Velocidade: {speed}%</p>
+                </div>
+                <Slider
+                  value={[speed]}
+                  onValueChange={(value) => setSpeed(value[0])}
+                  max={100}
+                  min={0}
+                  step={1}
+                  className="w-full"
+                />
               </div>
-              
-              <Button onClick={moveLeft} size="lg" className="w-20">
-                ←
-              </Button>
-              <Button onClick={stop} size="lg" variant="destructive" className="w-20">
-                PARE
-              </Button>
-              <Button onClick={moveRight} size="lg" className="w-20">
-                →
-              </Button>
 
-              <div className="col-span-3 flex justify-center">
-                <Button onClick={moveBackward} size="lg" className="w-20">
-                  ↓
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-3 flex justify-center">
+                  <Button onClick={moveForward} size="lg" className="w-20">
+                    ↑
+                  </Button>
+                </div>
+                
+                <Button onClick={moveLeft} size="lg" className="w-20">
+                  ←
                 </Button>
+                <Button onClick={stop} size="lg" variant="destructive" className="w-20">
+                  PARE
+                </Button>
+                <Button onClick={moveRight} size="lg" className="w-20">
+                  →
+                </Button>
+
+                <div className="col-span-3 flex justify-center">
+                  <Button onClick={moveBackward} size="lg" className="w-20">
+                    ↓
+                  </Button>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           {isConnected && (
