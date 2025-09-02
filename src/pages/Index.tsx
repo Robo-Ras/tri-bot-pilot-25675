@@ -1,19 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
+import MotorSpeedControl from '@/components/MotorSpeedControl';
+import DirectionalControl from '@/components/DirectionalControl';
+
+type ControlMode = 'select' | 'motor' | 'directional';
 
 const Index = () => {
   const [port, setPort] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string>('');
-  const [motor1, setMotor1] = useState<number>(0);
-  const [motor2, setMotor2] = useState<number>(0);
-  const [motor3, setMotor3] = useState<number>(0);
+  const [controlMode, setControlMode] = useState<ControlMode>('select');
 
   // Verifica se o navegador suporta WebSerial
   const isWebSerialSupported = 'serial' in navigator;
@@ -51,13 +50,6 @@ const Index = () => {
     }
   };
 
-  const goCommand = () => {
-    sendCommand(motor1, motor2, motor3);
-  };
-
-  const stopCommand = () => {
-    sendCommand(0, 0, 0);
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -95,109 +87,43 @@ const Index = () => {
             )}
           </div>
 
-          {isConnected && (
-            <div className="space-y-6">
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <Label>Motor 1</Label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-4">
-                      <Slider
-                        value={[motor1]}
-                        onValueChange={(value) => setMotor1(value[0])}
-                        min={-255}
-                        max={255}
-                        step={1}
-                        className="flex-1"
-                      />
-                      <div className="w-12 text-center text-sm font-mono">
-                        {motor1}
-                      </div>
-                    </div>
-                    <Input
-                      type="number"
-                      min="-255"
-                      max="255"
-                      value={motor1}
-                      onChange={(e) => setMotor1(Number(e.target.value))}
-                      placeholder="0"
-                      className="text-center"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <Label>Motor 2</Label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-4">
-                      <Slider
-                        value={[motor2]}
-                        onValueChange={(value) => setMotor2(value[0])}
-                        min={-255}
-                        max={255}
-                        step={1}
-                        className="flex-1"
-                      />
-                      <div className="w-12 text-center text-sm font-mono">
-                        {motor2}
-                      </div>
-                    </div>
-                    <Input
-                      type="number"
-                      min="-255"
-                      max="255"
-                      value={motor2}
-                      onChange={(e) => setMotor2(Number(e.target.value))}
-                      placeholder="0"
-                      className="text-center"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <Label>Motor 3</Label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-4">
-                      <Slider
-                        value={[motor3]}
-                        onValueChange={(value) => setMotor3(value[0])}
-                        min={-255}
-                        max={255}
-                        step={1}
-                        className="flex-1"
-                      />
-                      <div className="w-12 text-center text-sm font-mono">
-                        {motor3}
-                      </div>
-                    </div>
-                    <Input
-                      type="number"
-                      min="-255"
-                      max="255"
-                      value={motor3}
-                      onChange={(e) => setMotor3(Number(e.target.value))}
-                      placeholder="0"
-                      className="text-center"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <Button onClick={goCommand} size="lg" className="w-full">
-                  GO
+          {isConnected && controlMode === 'select' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold text-center">Escolha o modo de controle</h3>
+              <div className="grid grid-cols-1 gap-4">
+                <Button onClick={() => setControlMode('motor')} size="lg" className="w-full">
+                  Controle de Velocidade por Motor
                 </Button>
-                <Button onClick={stopCommand} size="lg" variant="destructive" className="w-full">
-                  STOP
+                <Button onClick={() => setControlMode('directional')} size="lg" variant="outline" className="w-full">
+                  Controle Direcional
                 </Button>
               </div>
             </div>
           )}
 
-          {isConnected && (
-            <div className="text-sm text-muted-foreground text-center">
-              <p>Controle direto dos motores</p>
-              <p>Digite valores de -255 a 255 para cada motor</p>
+          {isConnected && controlMode === 'motor' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button onClick={() => setControlMode('select')} variant="outline" size="sm">
+                  ← Voltar
+                </Button>
+                <h3 className="text-lg font-semibold">Controle por Motor</h3>
+                <div></div>
+              </div>
+              <MotorSpeedControl onSendCommand={sendCommand} />
+            </div>
+          )}
+
+          {isConnected && controlMode === 'directional' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button onClick={() => setControlMode('select')} variant="outline" size="sm">
+                  ← Voltar
+                </Button>
+                <h3 className="text-lg font-semibold">Controle Direcional</h3>
+                <div></div>
+              </div>
+              <DirectionalControl onSendCommand={sendCommand} />
             </div>
           )}
 
