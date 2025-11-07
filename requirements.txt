@@ -1,0 +1,17 @@
+# Dependências Python para Sistema de Navegação Autônoma
+
+# Intel RealSense SDK
+pyrealsense2
+
+# Comunicação Serial
+pyserial
+
+# WebSocket
+websockets
+
+# Processamento de Imagem
+opencv-python
+numpy
+
+# Async/Concurrent
+asyncio

@@ -1,139 +1,165 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import MotorSpeedControl from '@/components/MotorSpeedControl';
-import DirectionalControl from '@/components/DirectionalControl';
-
-type ControlMode = 'select' | 'motor' | 'directional';
+import { useState, useEffect, useRef } from "react";
+import DirectionalControl from "@/components/DirectionalControl";
+import MotorSpeedControl from "@/components/MotorSpeedControl";
+import { SensorVisualization } from "@/components/SensorVisualization";
+import { AutonomousControl } from "@/components/AutonomousControl";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
-  const [port, setPort] = useState<any>(null);
+  const [lastCommand, setLastCommand] = useState<string>("");
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<string>('');
-  const [controlMode, setControlMode] = useState<ControlMode>('select');
+  const [autonomousMode, setAutonomousMode] = useState(false);
+  const [cameraImage, setCameraImage] = useState<string>();
+  const [obstacles, setObstacles] = useState<any>();
+  const wsRef = useRef<WebSocket | null>(null);
+  const { toast } = useToast();
 
-  // Verifica se o navegador suporta WebSerial
-  const isWebSerialSupported = 'serial' in navigator;
-
-  const connectToArduino = async () => {
-    try {
-      if (!isWebSerialSupported) {
-        throw new Error('WebSerial não é suportado neste navegador');
-      }
-
-      const selectedPort = await (navigator as any).serial.requestPort();
-      await selectedPort.open({ baudRate: 9600 });
+  // WebSocket connection
+  useEffect(() => {
+    const connectWebSocket = () => {
+      const ws = new WebSocket('ws://localhost:8765');
       
-      setPort(selectedPort);
-      setIsConnected(true);
-      setError('');
-    } catch (err) {
-      setError(`Erro na conexão: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-    }
-  };
-
-  const sendCommand = async (m1: number, m2: number, m3: number) => {
-    if (!port || !isConnected) return;
-
-    try {
-      const writer = port.writable?.getWriter();
-      if (writer) {
-        const command = `${m1},${m2},${m3}\n`;
-        const encoder = new TextEncoder();
-        await writer.write(encoder.encode(command));
-        writer.releaseLock();
+      ws.onopen = () => {
+        console.log('✓ Conectado ao servidor Python');
+        setIsConnected(true);
+        toast({
+          title: "Conectado",
+          description: "Conexão estabelecida com o sistema de sensores",
+        });
+      };
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'sensor_data') {
+          if (data.camera) {
+            setCameraImage(data.camera);
+          }
+          if (data.obstacles) {
+            setObstacles(data.obstacles);
+          }
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        toast({
+          title: "Erro de Conexão",
+          description: "Verifique se o script Python está rodando",
+          variant: "destructive",
+        });
+      };
+      
+      ws.onclose = () => {
+        console.log('✗ Desconectado do servidor');
+        setIsConnected(false);
+        // Tentar reconectar após 3 segundos
+        setTimeout(connectWebSocket, 3000);
+      };
+      
+      wsRef.current = ws;
+    };
+    
+    connectWebSocket();
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
       }
-    } catch (err) {
-      setError(`Erro ao enviar comando: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+    };
+  }, [toast]);
+
+  const handleSendCommand = (m1: number, m2: number, m3: number) => {
+    setLastCommand(`M1: ${m1}, M2: ${m2}, M3: ${m3}`);
+    console.log("Sending command:", m1, m2, m3);
+    
+    // Envia comando via WebSocket se conectado
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'move',
+        m1, m2, m3
+      }));
     }
   };
 
+  const handleToggleAutonomous = (enabled: boolean) => {
+    setAutonomousMode(enabled);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_autonomous',
+        enabled
+      }));
+    }
+    
+    toast({
+      title: enabled ? "Modo Autônomo Ativado" : "Modo Manual Ativado",
+      description: enabled 
+        ? "O robô agora desviará automaticamente de obstáculos" 
+        : "Use os controles manuais para mover o robô",
+    });
+  };
+
+  const handleEmergencyStop = () => {
+    handleSendCommand(0, 0, 0);
+    setAutonomousMode(false);
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'set_autonomous',
+        enabled: false
+      }));
+    }
+    toast({
+      title: "Parada de Emergência",
+      description: "Todos os motores foram parados",
+      variant: "destructive",
+    });
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Controle do Robô</CardTitle>
-          <CardDescription>
-            Interface Web para controlar robô via Arduino
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="text-center space-y-2">
-            <Badge variant={isConnected ? "default" : "secondary"}>
-              {isConnected ? "Conectado" : "Desconectado"}
-            </Badge>
-            
-            {!isWebSerialSupported && (
-              <Alert>
-                <AlertDescription>
-                  WebSerial não é suportado neste navegador. Use Chrome/Edge mais recente.
-                </AlertDescription>
-              </Alert>
-            )}
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-4xl font-bold text-center mb-2">Tri-Bot Pilot</h1>
+      <p className="text-center text-muted-foreground mb-8">
+        Sistema de Controle Remoto com Navegação Autônoma
+      </p>
+      
+      {lastCommand && (
+        <div className="text-center mb-6 p-4 bg-secondary rounded-lg">
+          <p className="text-sm text-muted-foreground">Último comando enviado:</p>
+          <p className="font-mono font-semibold">{lastCommand}</p>
+        </div>
+      )}
 
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {/* Autonomous Control */}
+        <AutonomousControl
+          isConnected={isConnected}
+          autonomousMode={autonomousMode}
+          onToggleAutonomous={handleToggleAutonomous}
+          onEmergencyStop={handleEmergencyStop}
+        />
+        
+        {/* Sensor Visualization */}
+        <SensorVisualization
+          cameraImage={cameraImage}
+          obstacles={obstacles}
+        />
+      </div>
 
-            {!isConnected && isWebSerialSupported && (
-              <Button onClick={connectToArduino} className="w-full">
-                Conectar Arduino
-              </Button>
-            )}
-          </div>
-
-          {isConnected && controlMode === 'select' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-center">Escolha o modo de controle</h3>
-              <div className="grid grid-cols-1 gap-4">
-                <Button onClick={() => setControlMode('motor')} size="lg" className="w-full">
-                  Controle de Velocidade por Motor
-                </Button>
-                <Button onClick={() => setControlMode('directional')} size="lg" variant="outline" className="w-full">
-                  Controle Direcional
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {isConnected && controlMode === 'motor' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Button onClick={() => setControlMode('select')} variant="outline" size="sm">
-                  ← Voltar
-                </Button>
-                <h3 className="text-lg font-semibold">Controle por Motor</h3>
-                <div></div>
-              </div>
-              <MotorSpeedControl onSendCommand={sendCommand} />
-            </div>
-          )}
-
-          {isConnected && controlMode === 'directional' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Button onClick={() => setControlMode('select')} variant="outline" size="sm">
-                  ← Voltar
-                </Button>
-                <h3 className="text-lg font-semibold">Controle Direcional</h3>
-                <div></div>
-              </div>
-              <DirectionalControl onSendCommand={sendCommand} />
-            </div>
-          )}
-
-          <div className="text-xs text-muted-foreground space-y-1">
-            <p><strong>Arquivos criados:</strong></p>
-            <p>• robot_control.py - Interface Python</p>
-            <p>• arduino_robot_control.ino - Código Arduino</p>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="directional" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsTrigger value="directional">Controle Direcional</TabsTrigger>
+          <TabsTrigger value="motor">Controle por Motor</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="directional">
+          <DirectionalControl onSendCommand={handleSendCommand} />
+        </TabsContent>
+        
+        <TabsContent value="motor">
+          <MotorSpeedControl onSendCommand={handleSendCommand} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
