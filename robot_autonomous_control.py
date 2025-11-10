@@ -42,14 +42,25 @@ class RealSenseController:
         
         if len(devices) == 0:
             print("✗ Nenhum dispositivo RealSense encontrado!")
+            print("  Verifique se os sensores estão conectados via USB")
+            print("  Execute: lsusb | grep Intel")
             return []
         
         device_list = []
         for i, dev in enumerate(devices):
             name = dev.get_info(rs.camera_info.name)
             serial = dev.get_info(rs.camera_info.serial_number)
-            print(f"{i+1}. {name} (Serial: {serial})")
-            device_list.append({'name': name, 'serial': serial})
+            firmware = dev.get_info(rs.camera_info.firmware_version)
+            product_line = dev.get_info(rs.camera_info.product_line)
+            print(f"{i+1}. {name}")
+            print(f"   Serial: {serial}")
+            print(f"   Firmware: {firmware}")
+            print(f"   Linha de Produto: {product_line}")
+            device_list.append({
+                'name': name, 
+                'serial': serial, 
+                'product_line': product_line
+            })
         
         return device_list
     
@@ -58,27 +69,39 @@ class RealSenseController:
         devices = self.list_devices()
         
         for dev in devices:
-            # Busca por L515 ou qualquer LiDAR
-            if 'L515' in dev['name'] or 'L5' in dev['name']:
+            name = dev['name'].upper()
+            product_line = dev.get('product_line', '').upper()
+            
+            # Busca por L515 usando nome e linha de produto
+            if 'L515' in name or 'L5' in name or 'L500' in product_line:
                 self.lidar_serial = dev['serial']
-                print(f"✓ LiDAR identificado: {dev['name']} (Serial: {dev['serial']})")
+                print(f"\n✓ LiDAR L515 identificado!")
+                print(f"  Nome: {dev['name']}")
+                print(f"  Serial: {dev['serial']}")
             # Busca por D435 ou qualquer câmera RGB-D
-            elif 'D435' in dev['name'] or 'D4' in dev['name']:
+            elif 'D435' in name or 'D4' in name or 'D400' in product_line:
                 self.camera_serial = dev['serial']
-                print(f"✓ Câmera identificada: {dev['name']} (Serial: {dev['serial']})")
+                print(f"\n✓ Câmera D435 identificada!")
+                print(f"  Nome: {dev['name']}")
+                print(f"  Serial: {dev['serial']}")
         
         # Se não encontrou especificamente, usa os dispositivos disponíveis
         if not self.lidar_serial and len(devices) > 0:
             self.lidar_serial = devices[0]['serial']
-            print(f"⚠ Usando {devices[0]['name']} como LiDAR")
+            print(f"\n⚠ Usando {devices[0]['name']} como LiDAR (fallback)")
         
         if not self.camera_serial and len(devices) > 1:
             self.camera_serial = devices[1]['serial']
-            print(f"⚠ Usando {devices[1]['name']} como Câmera")
+            print(f"\n⚠ Usando {devices[1]['name']} como Câmera (fallback)")
         elif not self.camera_serial and len(devices) == 1:
             # Se só tem um dispositivo, usa para ambos
             self.camera_serial = devices[0]['serial']
-            print(f"⚠ Usando {devices[0]['name']} como Câmera também")
+            print(f"\n⚠ Usando {devices[0]['name']} como Câmera também (fallback)")
+        
+        if not (self.lidar_serial or self.camera_serial):
+            print("\n✗ Nenhum dispositivo RealSense pôde ser identificado!")
+            print("  Tente desconectar e reconectar os sensores")
+            print("  Verifique se os drivers estão instalados corretamente")
         
         return self.lidar_serial is not None or self.camera_serial is not None
     
@@ -238,9 +261,9 @@ class ObstacleDetector:
         
         obstacles = {
             'type': 'ground',
-            'left': left_min < self.safe_distance,
-            'center': center_min < self.safe_distance,
-            'right': right_min < self.safe_distance,
+            'left': bool(left_min < self.safe_distance),
+            'center': bool(center_min < self.safe_distance),
+            'right': bool(right_min < self.safe_distance),
             'distances': {
                 'left': float(left_min),
                 'center': float(center_min),
@@ -278,9 +301,9 @@ class ObstacleDetector:
         
         height_obstacles = {
             'type': 'height',
-            'left': left_min < self.safe_distance,
-            'center': center_min < self.safe_distance,
-            'right': right_min < self.safe_distance,
+            'left': bool(left_min < self.safe_distance),
+            'center': bool(center_min < self.safe_distance),
+            'right': bool(right_min < self.safe_distance),
             'distances': {
                 'left': float(left_min),
                 'center': float(center_min),
@@ -447,21 +470,36 @@ class WebSocketServer:
     async def sensor_loop(self):
         """Loop principal de processamento dos sensores"""
         frame_count = 0
+        consecutive_errors = 0
+        max_consecutive_errors = 20
         
         while self.running:
-            # Obtém dados dos sensores
-            lidar_data = self.sensors.get_lidar_data()  # Obstáculos no chão
-            color_image, camera_depth = self.sensors.get_camera_data()  # Altura dos objetos
-            
-            # Detecta obstáculos
-            ground_obstacles = None
-            height_obstacles = None
-            
-            if lidar_data is not None:
-                ground_obstacles = self.detector.analyze_lidar(lidar_data)
-            
-            if camera_depth is not None:
-                height_obstacles = self.detector.analyze_height(camera_depth)
+            try:
+                # Obtém dados dos sensores
+                lidar_data = self.sensors.get_lidar_data()  # Obstáculos no chão
+                color_image, camera_depth = self.sensors.get_camera_data()  # Altura dos objetos
+                
+                # Verifica se conseguiu dados
+                if lidar_data is None and color_image is None:
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(f"\n✗ Muitos erros consecutivos ({consecutive_errors})")
+                        print("  Os sensores podem estar desconectados")
+                        consecutive_errors = 0
+                    await asyncio.sleep(0.5)
+                    continue
+                else:
+                    consecutive_errors = 0
+                
+                # Detecta obstáculos
+                ground_obstacles = None
+                height_obstacles = None
+                
+                if lidar_data is not None:
+                    ground_obstacles = self.detector.analyze_lidar(lidar_data)
+                
+                if camera_depth is not None:
+                    height_obstacles = self.detector.analyze_height(camera_depth)
             
             # Navegação autônoma
             if self.autonomous_mode and (ground_obstacles or height_obstacles):
@@ -504,7 +542,11 @@ class WebSocketServer:
                             'colors': colors.tolist()
                         }
             
-            await self.send_to_all(message)
+                await self.send_to_all(message)
+            except Exception as e:
+                print(f"Erro no loop de sensores: {e}")
+                consecutive_errors += 1
+            
             await asyncio.sleep(0.1)  # 10 Hz
     
     async def start_server(self, host='localhost', port=8765):
