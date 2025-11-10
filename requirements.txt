@@ -11,7 +11,7 @@ websockets
 
 # Processamento de Imagem
 opencv-python
-numpy
+numpy<2.0.0
 
 # Reconstrução 3D
 open3d
