@@ -125,7 +125,7 @@ class RealSenseController:
             return None
         
         try:
-            frames = self.pipeline_lidar.wait_for_frames(timeout_ms=1000)
+            frames = self.pipeline_lidar.wait_for_frames(timeout_ms=5000)
             depth_frame = frames.get_depth_frame()
             if not depth_frame:
                 return None
@@ -142,7 +142,7 @@ class RealSenseController:
             return None, None
         
         try:
-            frames = self.pipeline_camera.wait_for_frames(timeout_ms=1000)
+            frames = self.pipeline_camera.wait_for_frames(timeout_ms=5000)
             color_frame = frames.get_color_frame()
             depth_frame = frames.get_depth_frame()
             
@@ -412,7 +412,7 @@ class WebSocketServer:
                 return_exceptions=True
             )
     
-    async def handle_client(self, websocket, path):
+    async def handle_client(self, websocket):
         """Gerencia comunicação com cliente"""
         await self.register(websocket)
         try:
